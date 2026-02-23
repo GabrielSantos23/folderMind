@@ -1,0 +1,26 @@
+{
+  "name": "@file-organizer-2.0/api",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@file-organizer-2.0/db": "workspace:*",
+    "@file-organizer-2.0/env": "workspace:*",
+    "@trpc/client": "catalog:",
+    "@trpc/server": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@file-organizer-2.0/config": "workspace:*",
+    "hono": "catalog:",
+    "typescript": "catalog:"
+  }
+}
