@@ -28,6 +28,15 @@ const TitlebarDesktop = isDesktop
     )
   : null;
 
+// Lazy-load UpdateToast only on desktop
+const UpdateToastDesktop = isDesktop
+  ? lazy(() =>
+      import("@/components/update-toast").then((m) => ({
+        default: m.UpdateToast,
+      })),
+    )
+  : null;
+
 export interface RouterAppContext {
   trpc: typeof trpc;
   queryClient: QueryClient;
@@ -77,6 +86,12 @@ function RootComponent() {
         </TooltipProvider>
 
         <Toaster />
+
+        {isDesktop && UpdateToastDesktop && (
+          <Suspense fallback={null}>
+            <UpdateToastDesktop />
+          </Suspense>
+        )}
       </ThemeProvider>
       {/* <TanStackRouterDevtools position="bottom-left" /> */}
       <ReactQueryDevtools position="bottom" buttonPosition="bottom-right" />
