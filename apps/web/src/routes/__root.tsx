@@ -1,7 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { HeadContent, Outlet, createRootRouteWithContext } from "@tanstack/react-router";
+import {
+  HeadContent,
+  Outlet,
+  createRootRouteWithContext,
+} from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
 import type { trpc } from "@/utils/trpc";
@@ -11,6 +15,18 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 import "../index.css";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { isDesktop } from "@/lib/platform";
+import { lazy, Suspense } from "react";
+
+// Lazy-load Titlebar only on desktop so Tauri imports don't break web builds
+const TitlebarDesktop = isDesktop
+  ? lazy(() =>
+      import("@/components/titlebar").then((m) => ({
+        default: m.Titlebar,
+      })),
+    )
+  : null;
 
 export interface RouterAppContext {
   trpc: typeof trpc;
@@ -41,6 +57,12 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 function RootComponent() {
   return (
     <>
+      {isDesktop && TitlebarDesktop && (
+        <Suspense fallback={null}>
+          <TitlebarDesktop />
+        </Suspense>
+      )}
+
       <HeadContent />
       <ThemeProvider
         attribute="class"
@@ -48,13 +70,15 @@ function RootComponent() {
         disableTransitionOnChange
         storageKey="vite-ui-theme"
       >
-        <div className="grid grid-rows-[auto_1fr] h-svh">
-          <Header />
-          <Outlet />
-        </div>
-        <Toaster richColors />
+        <TooltipProvider>
+          <div className={`h-svh overflow-hidden ${isDesktop ? "pt-10" : ""}`}>
+            <Outlet />
+          </div>
+        </TooltipProvider>
+
+        <Toaster />
       </ThemeProvider>
-      <TanStackRouterDevtools position="bottom-left" />
+      {/* <TanStackRouterDevtools position="bottom-left" /> */}
       <ReactQueryDevtools position="bottom" buttonPosition="bottom-right" />
     </>
   );

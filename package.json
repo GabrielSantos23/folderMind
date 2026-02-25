@@ -31,7 +31,9 @@
     "db:studio": "bun run --filter @file-organizer-2.0/db db:studio",
     "db:generate": "bun run --filter @file-organizer-2.0/db db:generate",
     "db:migrate": "bun run --filter @file-organizer-2.0/db db:migrate",
-    "db:local": "bun run --filter @file-organizer-2.0/db db:local"
+    "db:local": "bun run --filter @file-organizer-2.0/db db:local",
+    "tauri": "tauri",
+    "dev:desktop": "tauri dev"
   },
   "dependencies": {
     "@file-organizer-2.0/env": "workspace:*",
@@ -40,6 +42,7 @@
   },
   "devDependencies": {
     "@file-organizer-2.0/config": "workspace:*",
+    "@tauri-apps/cli": "^2.10.0",
     "@types/bun": "catalog:",
     "typescript": "catalog:"
   },
