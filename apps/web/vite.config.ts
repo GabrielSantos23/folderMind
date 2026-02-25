@@ -15,6 +15,7 @@ const tauriConf = JSON.parse(
 const appVersion: string = tauriConf.version ?? "0.0.0";
 
 export default defineConfig({
+  base: "./",
   plugins: [tailwindcss(), tanstackRouter({}), react()],
   define: {
     __TAURI_APP_VERSION__: JSON.stringify(appVersion),
