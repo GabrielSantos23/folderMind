@@ -221,13 +221,11 @@ pub fn analyze_with_progress(
 
     let max_bytes = settings.max_file_size_mb * 1024 * 1024;
 
-    // Collect entries from the selected path
     let mut all_entries: Vec<_> = fs::read_dir(base_path)
         .map_err(|e| e.to_string())?
         .filter_map(|e| e.ok())
         .collect();
 
-    // If scanning a Desktop folder, also include files from Public Desktop
     let folder_name_lower = base_path
         .file_name()
         .unwrap_or_default()
