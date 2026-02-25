@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "identifier": "com.gabrielsantos.foldermind",
   "build": {
-    "frontendDist": "../dist",
+    "frontendDist": "../apps/web/dist",
     "devUrl": "http://localhost:3001",
     "beforeDevCommand": "bun run dev",
     "beforeBuildCommand": "bun run build"
