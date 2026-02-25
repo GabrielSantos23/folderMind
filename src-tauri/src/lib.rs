@@ -7,9 +7,165 @@ use database::{Database, SessionRecord, FolderRecord, FileRecord};
 use tauri::AppHandle;
 use std::sync::Mutex;
 use tauri::Manager;
+use std::process::{Child, Command};
+use std::path::PathBuf;
 
 pub struct AppState {
     pub db: Mutex<Option<Database>>,
+    pub classifier_process: Mutex<Option<Child>>,
+}
+
+fn get_target_triple() -> &'static str {
+    #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
+    { "x86_64-pc-windows-msvc" }
+    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+    { "x86_64-unknown-linux-gnu" }
+    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
+    { "x86_64-apple-darwin" }
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    { "aarch64-apple-darwin" }
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    { "aarch64-unknown-linux-gnu" }
+}
+
+fn resolve_sidecar_path() -> Option<PathBuf> {
+    let ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    let triple = get_target_triple();
+
+    // Production: binary is next to the main executable
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let prod_path = exe_dir.join(format!("classifier{}", ext));
+            if prod_path.exists() {
+                log::info!("Found classifier sidecar at: {:?}", prod_path);
+                return Some(prod_path);
+            }
+        }
+    }
+
+    // Development: binary is at src-tauri/binaries/classifier-{target_triple}
+    let dev_path = PathBuf::from(format!("binaries/classifier-{}{}", triple, ext));
+    if dev_path.exists() {
+        log::info!("Found classifier sidecar (dev) at: {:?}", dev_path);
+        return Some(dev_path);
+    }
+
+    None
+}
+
+fn read_env_file(app_handle: &AppHandle) -> std::collections::HashMap<String, String> {
+    let mut env_vars = std::collections::HashMap::new();
+
+    let mut env_paths = Vec::new();
+
+    // 1. App data directory (e.g. C:\Users\user\AppData\Roaming\com.gabrielsantos.foldermind\.env)
+    if let Ok(data_dir) = app_handle.path().app_data_dir() {
+        env_paths.push(data_dir.join(".env"));
+    }
+
+    // 2. Next to the main executable (production)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            env_paths.push(exe_dir.join(".env"));
+        }
+    }
+
+    for env_path in &env_paths {
+        if let Ok(content) = std::fs::read_to_string(env_path) {
+            log::info!("Loaded .env from: {:?}", env_path);
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some((key, value)) = line.split_once('=') {
+                    env_vars.insert(key.trim().to_string(), value.trim().to_string());
+                }
+            }
+            break; // Use the first .env found
+        }
+    }
+
+    // 3. Fallback: check system environment variable
+    if !env_vars.contains_key("GROQ_API_KEY") {
+        if let Ok(key) = std::env::var("GROQ_API_KEY") {
+            env_vars.insert("GROQ_API_KEY".to_string(), key);
+        }
+    }
+
+    env_vars
+}
+
+fn spawn_classifier(app_handle: &AppHandle) -> Option<Child> {
+    let sidecar_path = match resolve_sidecar_path() {
+        Some(p) => p,
+        None => {
+            log::warn!("Classifier sidecar binary not found. Running without embedded classifier.");
+            log::warn!("Make sure the Python classifier server is running manually on port 8000.");
+            return None;
+        }
+    };
+
+    let env_vars = read_env_file(app_handle);
+
+    if !env_vars.contains_key("GROQ_API_KEY") {
+        log::warn!("GROQ_API_KEY not found. The classifier may not work correctly.");
+        log::warn!("Set it as a system environment variable or place a .env file in the app data directory.");
+    }
+
+    log::info!("Spawning classifier sidecar: {:?}", sidecar_path);
+
+    let mut cmd = Command::new(&sidecar_path);
+    cmd.envs(&env_vars)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    // On Windows, hide the console window for the sidecar
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    match cmd.spawn() {
+        Ok(child) => {
+            log::info!("Classifier sidecar spawned with PID: {}", child.id());
+
+            // Health-check in a background thread to avoid blocking the tokio runtime
+            std::thread::spawn(|| {
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(2))
+                    .build()
+                    .unwrap();
+                let mut healthy = false;
+                for attempt in 0..30 {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    match client.get("http://localhost:8000/health").send() {
+                        Ok(res) if res.status().is_success() => {
+                            log::info!("Classifier sidecar is healthy (attempt {})", attempt + 1);
+                            healthy = true;
+                            break;
+                        }
+                        _ => {
+                            if attempt % 5 == 4 {
+                                log::info!("Waiting for classifier sidecar... (attempt {})", attempt + 1);
+                            }
+                        }
+                    }
+                }
+                if !healthy {
+                    log::warn!("Classifier sidecar did not become healthy within 15 seconds");
+                }
+            });
+
+            Some(child)
+        }
+        Err(e) => {
+            log::error!("Failed to spawn classifier sidecar: {}", e);
+            None
+        }
+    }
 }
 
 #[tauri::command]
@@ -273,6 +429,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             db: Mutex::new(None),
+            classifier_process: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             analyze_directory,
@@ -292,7 +449,11 @@ pub fn run() {
             let db = Database::new(&app.handle()).expect("Failed to initialize database");
             let state = app.state::<AppState>();
             *state.db.lock().unwrap() = Some(db);
-            
+
+            // Spawn the classifier sidecar
+            let classifier_child = spawn_classifier(&app.handle());
+            *state.classifier_process.lock().unwrap() = classifier_child;
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -301,6 +462,17 @@ pub fn run() {
                 )?;
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let state = window.state::<AppState>();
+                let mut child = state.classifier_process.lock().unwrap();
+                if let Some(ref mut process) = *child {
+                    log::info!("Killing classifier sidecar (PID: {})", process.id());
+                    let _ = process.kill();
+                    let _ = process.wait();
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

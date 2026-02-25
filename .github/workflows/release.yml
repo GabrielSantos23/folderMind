@@ -36,6 +36,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies & build classifier sidecar
+        run: |
+          cd apps/python-classifier
+          pip install -r requirements.txt pyinstaller
+          python build_sidecar.py
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:

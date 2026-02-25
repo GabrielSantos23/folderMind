@@ -48,3 +48,8 @@ coverage
 .cache
 tmp
 temp
+
+# PyInstaller
+apps/python-classifier/build/
+apps/python-classifier/dist/
+apps/python-classifier/*.spec

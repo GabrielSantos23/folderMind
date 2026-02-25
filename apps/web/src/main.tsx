@@ -1,18 +1,29 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider, createRouter } from "@tanstack/react-router";
+import {
+  RouterProvider,
+  createRouter,
+  createHashHistory,
+  createBrowserHistory,
+} from "@tanstack/react-router";
 import ReactDOM from "react-dom/client";
 
 import Loader from "./components/loader";
 import { routeTree } from "./routeTree.gen";
 import { queryClient, trpc } from "./utils/trpc";
+import { isDesktop } from "./lib/platform";
+
+const history = isDesktop ? createHashHistory() : createBrowserHistory();
 
 const router = createRouter({
   routeTree,
   defaultPreload: "intent",
+  history,
   defaultPendingComponent: () => <Loader />,
   context: { trpc, queryClient },
   Wrap: function WrapComponent({ children }: { children: React.ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
   },
 });
 
