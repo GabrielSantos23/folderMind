@@ -12,11 +12,10 @@
     <script>
       if (window.isTauri || window.__TAURI_INTERNALS__) {
         document.addEventListener("contextmenu", function (e) {
-          // e.preventDefault(); // Temporarily disabled for debugging
+          // e.preventDefault();
         });
       }
 
-      // Global error catcher to help diagnose the "blank page" issue
       window.onerror = function (msg, url, line, col, error) {
         var errDiv = document.getElementById("init-error");
         if (!errDiv) {
