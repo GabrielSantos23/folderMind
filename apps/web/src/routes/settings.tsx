@@ -380,6 +380,24 @@ function SettingsPage() {
                     onCheckedChange={(v) => set("deepAnalysis", v)}
                   />
                 </SettingRow>
+
+                {isSettingVisible(platform, "groqApiKey") && (
+                  <div className="py-3">
+                    <div className="text-[13px] font-medium text-foreground/80 mb-1">
+                      Groq API Key
+                    </div>
+                    <div className="text-[11px] text-muted-foreground/50 mb-2 leading-relaxed">
+                      Your personal Groq API key is required to analyze files.
+                    </div>
+                    <input
+                      type="password"
+                      value={settings.groqApiKey}
+                      onChange={(e) => set("groqApiKey", e.target.value)}
+                      placeholder="gsk_..."
+                      className="w-full h-8 px-3 text-[12px] rounded-lg border border-border/50 bg-muted/20 text-foreground/80 placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                    />
+                  </div>
+                )}
               </Card>
             </section>
           )}

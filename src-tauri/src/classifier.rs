@@ -46,6 +46,7 @@ pub fn classify_file(
     categories: &[String],
     file_path: Option<&str>,
     use_vision: bool,
+    api_key: &str,
 ) -> Result<ClassifyResponse, String> {
     let request = ClassifyRequest {
         filename: filename.to_string(),
@@ -55,9 +56,12 @@ pub fn classify_file(
         use_vision,
     };
 
-    let response = client
-        .post(CLASSIFIER_URL)
-        .json(&request)
+    let mut req = client.post(CLASSIFIER_URL).json(&request);
+    if !api_key.is_empty() {
+        req = req.header("X-Groq-Api-Key", api_key);
+    }
+
+    let response = req
         .timeout(Duration::from_secs(30))
         .send()
         .map_err(|e| format!("Failed to reach classifier server: {}", e))?;
@@ -78,6 +82,7 @@ pub fn classify_batch(
     files: Vec<BatchFileItem>,
     categories: &[String],
     use_vision: bool,
+    api_key: &str,
 ) -> Result<Vec<ClassifyResponse>, String> {
     if files.is_empty() {
         return Ok(Vec::new());
@@ -89,9 +94,12 @@ pub fn classify_batch(
         use_vision,
     };
 
-    let response = client
-        .post(CLASSIFIER_BATCH_URL)
-        .json(&request)
+    let mut req = client.post(CLASSIFIER_BATCH_URL).json(&request);
+    if !api_key.is_empty() {
+        req = req.header("X-Groq-Api-Key", api_key);
+    }
+
+    let response = req
         .timeout(Duration::from_secs(120))
         .send()
         .map_err(|e| format!("Failed to reach classifier server: {}", e))?;

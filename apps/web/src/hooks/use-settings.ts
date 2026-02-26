@@ -16,6 +16,7 @@ export interface Settings {
   keepHistory: boolean;
   historyDays: number;
   telemetry: boolean;
+  groqApiKey: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -34,6 +35,7 @@ export const DEFAULTS: Settings = {
   keepHistory: true,
   historyDays: 30,
   telemetry: false,
+  groqApiKey: "",
 };
 
 const STORAGE_KEY = "foldermind-settings";

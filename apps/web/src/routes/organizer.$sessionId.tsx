@@ -992,9 +992,19 @@ function SessionPage() {
       ]);
 
       try {
+        const currentSettings = getSettings();
+
+        if (!currentSettings.groqApiKey) {
+          setIsAnalyzing(false);
+          toast.error("Missing API Key", {
+            description:
+              "Please configure your Groq API key in Settings to analyze files.",
+          });
+          return;
+        }
+
         if (isDesktop) {
           const { invoke } = await import("@tauri-apps/api/core");
-          const currentSettings = getSettings();
           const excludePatterns = parseExcludePatterns(
             currentSettings.excludePatterns,
           );
@@ -1008,6 +1018,7 @@ function SessionPage() {
               excludePatterns,
               maxFileSizeMb: currentSettings.maxFileSizeMb,
               deepAnalysis: tags.deep,
+              groqApiKey: currentSettings.groqApiKey,
             },
           });
 
@@ -1059,7 +1070,12 @@ function SessionPage() {
             }
           }
         } else {
-          const result = await analyzeFilesWeb(targetPath, tags, runSessionId);
+          const result = await analyzeFilesWeb(
+            targetPath,
+            tags,
+            runSessionId,
+            currentSettings.groqApiKey,
+          );
 
           setMessages((prev) =>
             prev.map((m) => {
@@ -1197,6 +1213,7 @@ async function analyzeFilesWeb(
   path: string,
   tags: { vision: boolean; deep: boolean; dedup: boolean },
   sessionId: string,
+  groqApiKey?: string,
 ): Promise<Plan> {
   const { getWebFiles, formatFileSize } = await import("@/lib/web-file-store");
   const files = getWebFiles();
@@ -1235,9 +1252,16 @@ async function analyzeFilesWeb(
   });
 
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (groqApiKey) {
+      headers["X-Groq-Api-Key"] = groqApiKey;
+    }
+
     const res = await fetch("http://localhost:8000/classify-batch", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         files: batchItems,
         categories: DEFAULT_CATEGORIES,

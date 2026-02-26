@@ -31,7 +31,8 @@ export type SettingItemId =
   | "maxFileSizeMb"
   | "keepHistory"
   | "historyDays"
-  | "notifyOnComplete";
+  | "notifyOnComplete"
+  | "groqApiKey";
 
 /** Configuration for a single platform. */
 export interface PlatformSettingsConfig {
@@ -60,6 +61,7 @@ const DESKTOP_CONFIG: PlatformSettingsConfig = {
     "keepHistory",
     "historyDays",
     "notifyOnComplete",
+    "groqApiKey",
   ],
 };
 
@@ -68,6 +70,7 @@ const WEB_CONFIG: PlatformSettingsConfig = {
   visibleSettings: [
     // Web still benefits from controlling max file size for uploads
     "maxFileSizeMb",
+    "groqApiKey",
   ],
 };
 

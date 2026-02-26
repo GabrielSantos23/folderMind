@@ -1,32 +1,22 @@
-
-
 import asyncio
 import base64
 import os
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 from pydantic import BaseModel
 
 load_dotenv()
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise RuntimeError(
-        "GROQ_API_KEY is not set. "
-        "Create a .env file with GROQ_API_KEY=your_key or set it as an environment variable."
-    )
-
-client = Groq(api_key=GROQ_API_KEY)
 
 MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
@@ -101,27 +91,21 @@ app.add_middleware(
 )
 
 
-
-
 class ClassifyRequest(BaseModel):
     """Incoming file metadata from the Rust backend."""
 
     filename: str
     extension: str
     categories: list[str]
-    file_path: str | None = (
-        None  
-    )
-    use_vision: bool = (
-        False  
-    )
+    file_path: str | None = None
+    use_vision: bool = False
 
 
 class ClassifyResponse(BaseModel):
     """Outgoing classification result."""
 
     category: str
-    is_vision: bool = False  
+    is_vision: bool = False
 
 
 class BatchFileItem(BaseModel):
@@ -146,7 +130,7 @@ class BatchClassifyResponse(BaseModel):
     results: list[ClassifyResponse]
 
 
-BATCH_SIZE = 20     
+BATCH_SIZE = 20
 
 BATCH_SYSTEM_PROMPT = (
     "You are a smart file-classification engine. "
@@ -163,7 +147,13 @@ BATCH_SYSTEM_PROMPT = (
     'Example response: ["Documents", "Images & Screenshots", "Fonts & Typography"]'
 )
 
-
+def get_api_key(x_groq_api_key: Optional[str] = Header(None)) -> str:
+    if not x_groq_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="GROQ_API_KEY is not set. Please provide it via X-Groq-Api-Key header."
+        )
+    return x_groq_api_key
 
 
 @app.get("/health")
@@ -173,17 +163,12 @@ async def health_check():
 
 
 @app.post("/classify", response_model=ClassifyResponse)
-async def classify_file(req: ClassifyRequest):
+async def classify_file(req: ClassifyRequest, request: Request, x_groq_api_key: Optional[str] = Header(None)):
     """
     Classify a file into one of the provided categories.
-
-    For images: uses vision to analyze the actual image content and
-    generates a descriptive folder name based on what's in the image.
-
-    For other files: uses the filename + extension to pick the best
-    match from the supplied category list.
     """
-
+    api_key = get_api_key(x_groq_api_key)
+    
     if not req.categories:
         raise HTTPException(
             status_code=400,
@@ -195,22 +180,22 @@ async def classify_file(req: ClassifyRequest):
 
     if is_image and req.file_path and req.use_vision:
         try:
-            return await _classify_image(req.file_path, ext_lower)
+            return await _classify_image(api_key, req.file_path, ext_lower, req.categories)
         except FileNotFoundError:
             pass
         except Exception as e:
             print(f"Vision classification failed, falling back to text: {e}")
 
-    return await _classify_by_name(req)
+    return await _classify_by_name(api_key, req)
 
 
 @app.post("/classify-batch", response_model=BatchClassifyResponse)
-async def classify_batch(req: BatchClassifyRequest):
+async def classify_batch(req: BatchClassifyRequest, request: Request, x_groq_api_key: Optional[str] = Header(None)):
     """
     Classify multiple files in batches to avoid API overload.
-
-    Files are processed in chunks of BATCH_SIZE with retries.
     """
+    api_key = get_api_key(x_groq_api_key)
+    
     if not req.files:
         return BatchClassifyResponse(results=[])
 
@@ -243,7 +228,7 @@ async def classify_batch(req: BatchClassifyRequest):
 
             try:
                 batch_results = await _classify_batch_text_with_retry(
-                    batch_files, req.categories
+                    api_key, batch_files, req.categories
                 )
                 for idx, result in zip(batch_indices, batch_results):
                     results[idx] = result
@@ -253,7 +238,7 @@ async def classify_batch(req: BatchClassifyRequest):
                     f = req.files[idx]
                     try:
                         result = await _classify_by_name_with_retry(
-                            f.filename, f.extension, req.categories
+                            api_key, f.filename, f.extension, req.categories
                         )
                         results[idx] = result
                     except Exception:
@@ -265,14 +250,14 @@ async def classify_batch(req: BatchClassifyRequest):
         ext_lower = f.extension.lower()
         try:
             if f.file_path:
-                result = await _classify_image(f.file_path, ext_lower)
+                result = await _classify_image(api_key, f.file_path, ext_lower, req.categories)
             else:
                 raise Exception("No file path")
         except Exception as e:
             print(f"Vision classification failed for {f.filename}: {e}")
             try:
                 result = await _classify_by_name_with_retry(
-                    f.filename, f.extension, req.categories
+                    api_key, f.filename, f.extension, req.categories
                 )
             except Exception:
                 result = ClassifyResponse(category="Images & Screenshots")
@@ -283,13 +268,13 @@ async def classify_batch(req: BatchClassifyRequest):
 
 
 async def _classify_batch_text_with_retry(
-    files: list[BatchFileItem], categories: list[str], max_retries: int = 3
+    api_key: str, files: list[BatchFileItem], categories: list[str], max_retries: int = 3
 ) -> list[ClassifyResponse]:
     """Classify a batch of files with exponential backoff retry."""
 
     for attempt in range(max_retries):
         try:
-            return await _classify_batch_text(files, categories)
+            return await _classify_batch_text(api_key, files, categories)
         except Exception as e:
             error_str = str(e).lower()
 
@@ -306,17 +291,18 @@ async def _classify_batch_text_with_retry(
             else:
                 raise
 
-    return await _classify_batch_text(files, categories)
+    return await _classify_batch_text(api_key, files, categories)
 
 
 async def _classify_by_name_with_retry(
-    filename: str, extension: str, categories: list[str], max_retries: int = 3
+    api_key: str, filename: str, extension: str, categories: list[str], max_retries: int = 3
 ) -> ClassifyResponse:
     """Classify a single file with retry logic."""
 
     for attempt in range(max_retries):
         try:
             return await _classify_by_name(
+                api_key,
                 ClassifyRequest(
                     filename=filename,
                     extension=extension,
@@ -340,6 +326,7 @@ async def _classify_by_name_with_retry(
                 raise
 
     return await _classify_by_name(
+        api_key,
         ClassifyRequest(
             filename=filename,
             extension=extension,
@@ -351,10 +338,11 @@ async def _classify_by_name_with_retry(
 
 
 async def _classify_batch_text(
-    files: list[BatchFileItem], categories: list[str]
+    api_key: str, files: list[BatchFileItem], categories: list[str]
 ) -> list[ClassifyResponse]:
     """Classify multiple files in a single LLM request."""
 
+    client = Groq(api_key=api_key)
     file_list = "\n".join(
         [
             f"{i + 1}. {f.filename} (extension: {f.extension})"
@@ -422,10 +410,11 @@ async def _classify_batch_text(
 
 
 async def _classify_image(
-    file_path: str, ext_lower: str, categories: list[str] | None = None
+    api_key: str, file_path: str, ext_lower: str, categories: list[str] | None = None
 ) -> ClassifyResponse:
     """Classify an image by its visual content using the vision model."""
 
+    client = Groq(api_key=api_key)
     path = Path(file_path)
     if not path.exists() or not path.is_file():
         raise FileNotFoundError(f"Image file not found: {file_path}")
@@ -483,9 +472,10 @@ async def _classify_image(
     return ClassifyResponse(category=category, is_vision=True)
 
 
-async def _classify_by_name(req: ClassifyRequest) -> ClassifyResponse:
+async def _classify_by_name(api_key: str, req: ClassifyRequest) -> ClassifyResponse:
     """Classify a file by its filename and extension using text analysis."""
 
+    client = Groq(api_key=api_key)
     user_message = (
         f"Filename: {req.filename}\n"
         f"Extension: {req.extension}\n"

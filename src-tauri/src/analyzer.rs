@@ -46,6 +46,7 @@ pub struct AnalysisSettings {
     pub exclude_patterns: Vec<String>,
     pub max_file_size_mb: u64,
     pub deep_analysis: bool,
+    pub groq_api_key: String,
 }
 
 impl Default for AnalysisSettings {
@@ -59,6 +60,7 @@ impl Default for AnalysisSettings {
             ],
             max_file_size_mb: 100,
             deep_analysis: false,
+            groq_api_key: String::new(),
         }
     }
 }
@@ -324,7 +326,7 @@ pub fn analyze_with_progress(
         total_files,
     );
 
-    let results = classifier::classify_batch(&client, batch_items, &categories, use_vision)
+    let results = classifier::classify_batch(&client, batch_items, &categories, use_vision, &settings.groq_api_key)
         .unwrap_or_else(|e| {
             log::error!("Batch classification failed: {}", e);
             vec![
