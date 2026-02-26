@@ -39,7 +39,5 @@ if (!rootElement) {
   throw new Error("Root element not found");
 }
 
-if (!rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement);
-  root.render(<RouterProvider router={router} />);
-}
+const root = ReactDOM.createRoot(rootElement);
+root.render(<RouterProvider router={router} />);

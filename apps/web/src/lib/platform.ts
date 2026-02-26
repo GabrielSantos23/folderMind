@@ -1,7 +1,9 @@
+import { isTauri } from "@tauri-apps/api/core";
+
 export type Platform = "desktop" | "web";
 
 export function getPlatform(): Platform {
-  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+  if (typeof window !== "undefined" && isTauri()) {
     return "desktop";
   }
   return "web";
