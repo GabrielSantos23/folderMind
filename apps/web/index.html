@@ -12,9 +12,46 @@
     <script>
       if (window.isTauri || window.__TAURI_INTERNALS__) {
         document.addEventListener("contextmenu", function (e) {
-          e.preventDefault();
+          // e.preventDefault(); // Temporarily disabled for debugging
         });
       }
+
+      // Global error catcher to help diagnose the "blank page" issue
+      window.onerror = function (msg, url, line, col, error) {
+        var errDiv = document.getElementById("init-error");
+        if (!errDiv) {
+          errDiv = document.createElement("div");
+          errDiv.id = "init-error";
+          errDiv.style =
+            "color: red; font-family: monospace; padding: 20px; z-index: 9999; position: absolute; background: rgba(0,0,0,0.8); width: 100vw; height: 100vh;";
+          document.body.prepend(errDiv);
+        }
+        errDiv.innerText +=
+          "\nError: " +
+          msg +
+          "\nURL: " +
+          url +
+          "\nLine: " +
+          line +
+          ":" +
+          col +
+          "\nStack: " +
+          (error ? error.stack : "");
+      };
+
+      window.addEventListener("unhandledrejection", function (event) {
+        var errDiv = document.getElementById("init-error");
+        if (!errDiv) {
+          errDiv = document.createElement("div");
+          errDiv.id = "init-error";
+          errDiv.style =
+            "color: red; font-family: monospace; padding: 20px; z-index: 9999; position: absolute; background: rgba(0,0,0,0.8); width: 100vw; height: 100vh;";
+          document.body.prepend(errDiv);
+        }
+        errDiv.innerText +=
+          "\nPromise Rejection: " +
+          (event.reason ? event.reason.stack || event.reason : "Unknown");
+      });
     </script>
   </body>
 </html>
